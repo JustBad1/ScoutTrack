@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Outdoor Activity Logbook</title>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.4/css/bulma.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <link rel="stylesheet" href="assets/css/styles.css">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+</head>
+<body>
+  <!-- Header -->
+  <section class="hero">
+    <div class="hero-body">
+      <div class="container has-text-centered">
+        <h1 class="title is-2">🏔️ Outdoor Activity Logbook</h1>
+        <p class="subtitle">Track your outdoor adventures, import from different files, and analyse your progress</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="container mt-4 mb-6">
+    <!-- Tabs for swapping views -->
+    <div class="card custom-card">
+      <div class="card-content">
+        <div class="tabs is-boxed is-centered is-large">
+          <ul>
+            <li class="is-active" data-tab="dashboard"><a><span>Dashboard</span></a></li>
+            <li data-tab="add-activity"><a><span>Add Activity</span></a></li>
+            <li data-tab="activities"><a><span>View Activities</span></a></li>
+            <li data-tab="import"><a><span>Import GPX</span></a></li>
+            <li data-tab="strava"><a><span>Strava Import</span></a></li>
+            <li data-tab="awards"><a><span>Awawrds</span></a>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard-content" class="tab-content">
+      <div class="columns is-multiline">
+        <!-- Statistics Cards -->
+        <div class="column is-3">
+          <div class="card custom-card">
+            <div class="card-content has-text-centered">
+              <p class="title is-2" id="total-activities">0</p>
+              <p class="subtitle is-6">Total Activities</p>
+            </div>
+          </div>
+        </div>
+        <div class="column is-3">
+          <div class="card custom-card">
+            <div class="card-content has-text-centered">
+              <p class="title is-2" id="total-distance">0</p>
+              <p class="subtitle is-6">Total Distance (km)</p>
+            </div>
+          </div>
+        </div>
+        <div class="column is-3">
+          <div class="card custom-card">
+            <div class="card-content has-text-centered">
+              <p class="title is-2" id="total-duration">0</p>
+              <p class="subtitle is-6">Total Duration (h)</p>
+            </div>
+          </div>
+        </div>
+        <div class="column is-3">
+          <div class="card custom-card">
+            <div class="card-content has-text-centered">
+              <p class="title is-2" id="total-nights">0</p>
+              <p class="subtitle is-6">Nights Camped</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Date Range Selector -->
+      <div class="card custom-card mb-4">
+        <div class="card-content">
+          <div class="level">
+            <div class="level-left">
+              <div class="level-item">
+                <h5 class="title is-5">Chart Date Range</h5>
+              </div>
+            </div>
+            <div class="level-right">
+              <div class="level-item">
+                <div class="field is-grouped">
+                  <div class="control">
+                    <div class="select">
+                      <select id="date-range-selector">
+                        <option value="3">Last 3 Months</option>
+                        <option value="6" selected>Last 6 Months</option>
+                        <option value="12">Last 12 Months</option>
+                        <option value="24">Last 24 Months</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="control">
+                    <button class="button is-primary" id="update-charts-btn">Update Charts</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Row -->
+      <div class="columns">
+        <!-- Activity Count by Month -->
+        <div class="column is-6">
+          <div class="card custom-card">
+            <header class="card-header">
+              <p class="card-header-title">Activity Count Trends</p>
+            </header>
+            <div class="card-content">
+              <div class="chart-container"><canvas id="countChart"></canvas></div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Distance by Month -->
+        <div class="column is-6">
+          <div class="card custom-card">
+            <header class="card-header">
+              <p class="card-header-title">Distance Trends (km)</p>
+            </header>
+            <div class="card-content">
+              <div class="chart-container"><canvas id="distanceChart"></canvas></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity Type Breakdown -->
+      <div class="columns">
+        <!-- Activity Types Distribution -->
+        <div class="column is-6">
+          <div class="card custom-card">
+            <header class="card-header">
+              <p class="card-header-title">Activity Types</p>
+            </header>
+            <div class="card-content">
+              <div class="chart-container"><canvas id="typeChart"></canvas></div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Elevation & Duration Analysis -->
+        <div class="column is-6">
+          <div class="card custom-card">
+            <header class="card-header">
+              <p class="card-header-title">Elevation & Duration Trends</p>
+            </header>
+            <div class="card-content">
+              <div class="chart-container"><canvas id="elevationChart"></canvas></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Activity -->
+    <div id="add-activity-content" class="tab-content is-hidden">
+      <div class="card custom-card">
+        <header class="card-header">
+          <p class="card-header-title">Add New Activity</p>
+        </header>
+        <div class="card-content">
+          <!-- Form for creating/updating a single activity -->
+          <form id="activity-form">
+            <div class="columns is-multiline">
+              <div class="column is-4">
+                <div class="field">
+                  <label class="label">Date</label>
+                  <div class="control"><input class="input" type="date" id="activity-date" required></div>
+                </div>
+              </div>
+              <div class="column is-4">
+                <div class="field">
+                  <label class="label">Activity Type</label>
+                  <div class="control">
+                    <div class="select is-fullwidth">
+                      <select id="activity-type" required>
+                        <option value="">Select Activity</option>
+                        <option value="Hiking">Hiking</option>
+                        <option value="Camping">Camping</option>
+                        <option value="Cycling">Cycling</option>
+                        <option value="Running">Running</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="column is-4">
+                <div class="field">
+                  <label class="label">Activity Name</label>
+                  <div class="control"><input class="input" type="text" id="activity-name" placeholder="e.g., Waterfall Hike" required></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="columns is-multiline">
+              <div class="column is-3">
+                <div class="field">
+                  <label class="label">Duration (hours)</label>
+                  <div class="control"><input class="input" type="number" step="0.1" min="0" id="duration" required></div>
+                </div>
+              </div>
+              <div class="column is-3">
+                <div class="field">
+                  <label class="label">Distance (km)</label>
+                  <div class="control"><input class="input" type="number" step="0.1" min="0" id="distance" required></div>
+                </div>
+              </div>
+              <div class="column is-3">
+                <div class="field">
+                  <label class="label">Elevation Gain (m)</label>
+                  <div class="control"><input class="input" type="number" min="0" id="elevation" required></div>
+                </div>
+              </div>
+              <div class="column is-3">
+                <div class="field">
+                  <label class="label">Nights Camped</label>
+                  <div class="control"><input class="input" type="number" min="0" value="0" id="nights" required></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="columns is-multiline">
+              <div class="column is-3">
+                <div class="field">
+                  <label class="label">Role</label>
+                  <div class="control">
+                    <div class="select is-fullwidth">
+                      <select id="role" required>
+                        <option value="Participate">Participate</option>
+                        <option value="Assist">Assist</option>
+                        <option value="Lead">Lead</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="strava-embed-placeholder" data-embed-type="activity" data-embed-id="11331075161" data-style="standard"></div><script src="https://strava-embeds.com/embed.js"></script>
+              <div class="column is-3">
+                <div class="field">
+                  <label class="label">Category</label>
+                  <div class="control">
+                    <div class="select is-fullwidth">
+                      <select id="category" required>
+                        <option value="Recreational">Recreational</option>
+                        <option value="Coaching">Coaching</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="column is-3">
+                <div class="field">
+                  <label class="label">Weather</label>
+                  <div class="control"><input class="input" type="text" id="weather" placeholder="Sunny, Rain, etc." required></div>
+                </div>
+              </div>
+              <div class="column is-3">
+                <div class="field">
+                  <label class="label">Scouting Activity?</label>
+                  <div class="control">
+                    <label class="checkbox"><input type="checkbox" id="scouting-activity" checked> Yes</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="columns">
+              <div class="column is-6">
+                <div class="field">
+                  <label class="label">Start Location</label>
+                  <div class="control"><input class="input" type="text" id="start-location" placeholder="Starting point" required></div>
+                </div>
+              </div>
+              <div class="column is-6">
+                <div class="field">
+                  <label class="label">End Location</label>
+                  <div class="control"><input class="input" type="text" id="end-location" placeholder="End point" required></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="label">Comments</label>
+              <div class="control"><textarea class="textarea" id="comments" placeholder="Notes, incidents, etc." required></textarea></div>
+            </div>
+
+            <div class="field is-grouped">
+              <div class="control"><button class="button is-primary" id="save-btn" type="submit"><span id="save-btn-text">Save Activity</span></button></div>
+              <div class="control"><button class="button is-light" type="reset" id="reset-btn">Reset</button></div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activities -->
+    <div id="activities-content" class="tab-content is-hidden">
+      <div class="card custom-card">
+        <header class="card-header">
+          <p class="card-header-title">Activities</p>
+        </header>
+        <div class="card-content">
+          <div class="field">
+            <div class="control has-icons-left">
+              <input class="input" type="text" id="search" placeholder="Search by name, type, role, category, weather, comments...">
+              <span class="icon is-small is-left">
+                <i class="fas fa-search"></i>
+              </span>
+            </div>
+          </div>
+          <div id="activities-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Import GPX -->
+    <div id="import-content" class="tab-content is-hidden">
+      <div class="card custom-card">
+        <header class="card-header">
+          <p class="card-header-title">Import GPX</p>
+        </header>
+        <div class="card-content">
+          <!-- Click to upload + drag and drop -->
+          <div class="file-upload-zone" onclick="document.getElementById('gpx-file').click()">
+            <p class="mt-3"><strong>Click to upload</strong> or drag and drop GPX files here</p>
+            <p class="has-text-grey">Supported formats: .gpx</p>
+          </div>
+          <input type="file" id="gpx-file" accept=".gpx" style="display:none" />
+
+          <!-- Preview box -->
+          <div id="gpx-preview" class="mt-4 is-hidden">
+            <h4 class="title is-5">GPX File Preview</h4>
+            <div id="gpx-details"></div>
+            <button class="button is-primary mt-3" id="import-gpx-btn">Import Activity</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Strava Import -->
+    <div id="strava-content" class="tab-content is-hidden">
+      <div class="card custom-card">
+        <header class="card-header">
+          <p class="card-header-title">Import from Strava</p>
+        </header>
+        <div class="card-content">
+          
+          <!-- Auth status / button -->
+          <div id="strava-auth-section">
+            <div class="strava-auth-box">
+              <h4 class="title is-4">Connect to Strava</h4>
+              <p class="subtitle">Connect your Strava account to import your activities</p>
+              <button class="button is-primary is-large" id="strava-auth-btn">
+                <span class="icon"><i class="fab fa-strava"></i></span>
+                <span>Connect with Strava</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Strava activities table -->
+          <div id="strava-activities-section" class="is-hidden">
+            <div class="level">
+              <div class="level-left">
+                <div class="level-item">
+                  <h4 class="title is-5">Your Strava Activities</h4>
+                </div>
+              </div>
+              <div class="level-right">
+                <div class="level-item">
+                  <button class="button is-small" id="refresh-strava-btn">
+                    <span class="icon"><i class="fas fa-sync"></i></span>
+                    <span>Refresh</span>
+                  </button>
+                  <button class="button is-small is-danger ml-2" id="disconnect-strava-btn">
+                    <span class="icon"><i class="fas fa-unlink"></i></span>
+                    <span>Disconnect</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <table class="table is-fullwidth is-striped is-hoverable">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Name</th>
+                    <th>Distance (km)</th>
+                    <th>Duration</th>
+                    <th>Elevation (m)</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="strava-activities-list"></tbody>
+              </table>
+            </div>
+
+            <div id="strava-loading" class="has-text-centered mt-4 is-hidden">
+              <span class="icon is-large"><i class="fas fa-spinner fa-pulse"></i></span>
+              <p>Loading Strava activities...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activity Modal -->
+    <div class="modal" id="activity-modal">
+      <div class="modal-background" onclick="closeModal()"></div>
+      <div class="modal-card">
+        <header class="modal-card-head">
+          <p class="modal-card-title">Activity Details</p>
+          <button class="delete" aria-label="close" onclick="closeModal()"></button>
+        </header>
+        <section class="modal-card-body" id="activity-modal-body"></section>
+        <footer class="modal-card-foot">
+          <button class="button is-warning" id="edit-activity-btn">Edit</button>
+          <button class="button is-danger" id="delete-activity-btn">Delete</button>
+          <button class="button" onclick="closeModal()">Close</button>
+        </footer>
+      </div>
+    </div>
+
+    <div id="notification" class="notification is-success is-hidden"></div>
+  </div>
+
+  <!-- JavaScript files -->
+  <script src="assets/js/app.js"></script>
+  <script src="assets/js/gpx.js"></script>
+  <script src="assets/js/strava.js"></script>
+  <script src="assets/js/charts.js"></script>
+</body>
+</html>
