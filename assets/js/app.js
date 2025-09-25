@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initialiseTabs();
   initialiseCharts();
   loadActivities();
-  loadStravaImportedIds();
+  // REMOVED: loadStravaImportedIds(); - this will be handled by strava.js
 
   // form + search events
   document.getElementById('activity-form').addEventListener('submit', saveActivity);
@@ -28,7 +28,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initialiseGPX();
   initialiseStrava();
 });
-
 
 //  handles GET/POST/PUT/DELETE requests and return JSON
 async function apiRequest(endpoint, method = 'GET', data = null) {
@@ -59,7 +58,7 @@ function switchTab(tabName) {
 
   // tab-specific actions
   if (tabName === 'dashboard') setTimeout(updateCharts, 50);
-  if (tabName === 'strava') checkStravaAuthStatus();
+  // REMOVED: checkStravaAuthStatus call - strava.js will handle its own state
 }
 
 async function loadActivities() {
@@ -81,7 +80,7 @@ async function saveActivity(e) {
   for (const id of requiredIds) {
     const el = document.getElementById(id);
     if (el && !String(el.value).trim()) {
-      showNotification('Please complete all fields before saving.', 'is-danger');
+      // REMOVED notification - just return silently or handle differently
       return;
     }
   }
@@ -111,10 +110,10 @@ async function saveActivity(e) {
   // create or update via API
   if (currentActivityId) {
     await apiRequest(`${API_CONFIG.activities}?id=${currentActivityId}`, 'PUT', activity);
-    showNotification('Activity updated.');
+    // REMOVED notification
   } else {
     await apiRequest(API_CONFIG.activities, 'POST', activity);
-    showNotification('Activity saved.');
+    // REMOVED notification
   }
 
   // refresh UI
@@ -224,6 +223,7 @@ async function showActivityDetails(id) {
 
 function closeModal() {
   document.getElementById('activity-modal').classList.remove('is-active');
+  document.getElementById('import-modal').classList.remove('is-active');
 }
 
 function editActivityFromModal(a) {
@@ -254,7 +254,7 @@ async function deleteActivityFromModal() {
   await apiRequest(`${API_CONFIG.activities}?id=${currentActivityId}`, 'DELETE');
   await loadActivities();
   closeModal();
-  showNotification('Activity deleted.');
+  // REMOVED notification
 }
 
 //dashboard titles 
@@ -289,3 +289,99 @@ function showNotification(msg, type = 'is-success') {
   n.classList.remove('is-hidden');
   setTimeout(() => n.classList.add('is-hidden'), 3000);
 }
+
+// Show import modal with prefilled data
+function showImportModal(data) {
+  const modal = document.getElementById('import-modal');
+  const form = document.getElementById('import-activity-form');
+  
+  // Fill in the locked/prefilled fields
+  document.getElementById('import-name').value = data.name || '';
+  document.getElementById('import-date').value = data.date || new Date().toISOString().split('T')[0];
+  document.getElementById('import-type').value = data.type || 'Hiking';
+  document.getElementById('import-duration').value = data.duration || '';
+  document.getElementById('import-distance').value = data.distance || '';
+  document.getElementById('import-elevation').value = data.elevation || '';
+  
+  // Clear the editable fields
+  document.getElementById('import-weather').value = '';
+  document.getElementById('import-start-location').value = '';
+  document.getElementById('import-end-location').value = '';
+  document.getElementById('import-comments').value = data.comments || '';
+  document.getElementById('import-nights').value = 0;
+  document.getElementById('import-role').value = 'Participate';
+  document.getElementById('import-category').value = 'Recreational';
+  document.getElementById('import-scouting').checked = false;
+  
+  // Store the source data for submission
+  form.dataset.sourceData = JSON.stringify(data);
+  
+  modal.classList.add('is-active');
+}
+
+// Handle import form submission
+async function submitImportForm(e) {
+  e.preventDefault();
+  
+  const form = e.target;
+  const sourceData = JSON.parse(form.dataset.sourceData);
+  
+  const activity = {
+    name: document.getElementById('import-name').value.trim(),
+    date: document.getElementById('import-date').value,
+    type: document.getElementById('import-type').value,
+    duration: parseFloat(document.getElementById('import-duration').value) || 0,
+    distance: parseFloat(document.getElementById('import-distance').value) || 0,
+    elevation: parseInt(document.getElementById('import-elevation').value, 10) || 0,
+    nights: parseInt(document.getElementById('import-nights').value || 0, 10),
+    role: document.getElementById('import-role').value,
+    category: document.getElementById('import-category').value,
+    weather: document.getElementById('import-weather').value.trim() || 'Unknown',
+    start_location: document.getElementById('import-start-location').value.trim() || 'Import',
+    end_location: document.getElementById('import-end-location').value.trim() || 'Import',
+    comments: document.getElementById('import-comments').value.trim(),
+    is_scouting_activity: document.getElementById('import-scouting').checked,
+    source: sourceData.source,
+    source_id: sourceData.source_id
+  };
+
+  const saveBtn = form.querySelector('button[type="submit"]');
+  saveBtn.classList.add('is-loading');
+
+  try {
+    const result = await apiRequest(API_CONFIG.activities, 'POST', activity);
+    
+    if (result.id) {
+      // Record the import in the appropriate table
+      if (sourceData.source === 'gpx') {
+        await recordGPXImport(sourceData.source_id, result.id);
+      } else if (sourceData.source === 'strava') {
+        await recordStravaImport(sourceData.source_id, result.id);
+      }
+      
+      // ONLY show notification for successful database import
+      showNotification(`Successfully imported "${activity.name}" to database`);
+      
+      await loadActivities();
+      closeModal();
+      
+      // Refresh the respective import lists
+      if (sourceData.source === 'gpx') {
+        await loadGPXImportedIds();
+      } else if (sourceData.source === 'strava') {
+        await loadStravaImportedIds();
+        displayStravaActivities();
+      }
+    }
+  } catch (error) {
+    console.error('Import error:', error);
+  } finally {
+    saveBtn.classList.remove('is-loading');
+  }
+}
+
+// Make key functions available globally for other modules
+window.loadActivities = loadActivities;
+window.showNotification = showNotification;
+window.showImportModal = showImportModal;
+window.formatDate = formatDate;

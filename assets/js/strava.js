@@ -1,4 +1,3 @@
-
 let stravaActivities = [];      // current page of Strava activities
 let stravaImportedIds = [];     // "imported" markers
 
@@ -9,7 +8,7 @@ const STRAVA_CONFIG = {
   SCOPE: 'activity:read_all'
 };
 
-// backend proxy for starava api
+// backend proxy for strava api
 const STRAVA_API_BASE = './api/strava_api.php';
 
 // LocalStorage helpers
@@ -30,6 +29,78 @@ const LS = {
   connected() { return localStorage.getItem('strava_connected') === 'true'; }
 };
 
+// Load Strava imported IDs from database (this is the key function)
+async function loadStravaImportedIds() {
+  try {
+    const response = await fetch('./api/strava_imports.php');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const imports = await response.json();
+    stravaImportedIds = Array.isArray(imports) ? imports.map(id => String(id)) : [];
+    console.log('Loaded Strava imported IDs:', stravaImportedIds);
+    return stravaImportedIds;
+  } catch (error) {
+    console.error('Error loading Strava imported IDs:', error);
+    stravaImportedIds = [];
+    return [];
+  }
+}
+
+// Check if a specific Strava activity has been imported
+async function isStravaActivityImported(stravaId) {
+  try {
+    const response = await fetch('./api/strava_imports.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ strava_id: String(stravaId) })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const result = await response.json();
+    return result.exists === true;
+  } catch (error) {
+    console.error('Error checking import status:', error);
+    return false;
+  }
+}
+
+// Record a Strava import in the database
+async function recordStravaImport(stravaId, activityId) {
+  try {
+    const response = await fetch('./api/strava_imports.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        action: 'insert',
+        strava_id: String(stravaId),
+        activity_id: parseInt(activityId)
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const result = await response.json();
+    if (result.success) {
+      // Add to local cache
+      stravaImportedIds.push(String(stravaId));
+      console.log('Recorded Strava import:', stravaId);
+      return true;
+    } else {
+      console.error('Failed to record import:', result);
+      return false;
+    }
+  } catch (error) {
+    console.error('Error recording import:', error);
+    return false;
+  }
+}
+
 // POST to Strava proxy
 async function apiPost(action, body) {
   const res = await fetch(`${STRAVA_API_BASE}?action=${encodeURIComponent(action)}`, {
@@ -42,26 +113,36 @@ async function apiPost(action, body) {
   return json;
 }
 
-//  buttons + auth callback + initial UI 
+//  Initialize Strava module
 function initialiseStrava() {
   document.getElementById('strava-auth-btn')?.addEventListener('click', initiateStravaAuth);
   document.getElementById('refresh-strava-btn')?.addEventListener('click', loadStravaActivities);
   document.getElementById('disconnect-strava-btn')?.addEventListener('click', disconnectStrava);
 
-  // finish the exchange then clean the URL.
+  // Handle OAuth callback
   handleStravaCallback();
 
-  //  stored state and activitie
+  // Load imported IDs first, then check auth status
+  loadStravaImportedIds().then(() => {
+    checkStravaAuthStatus();
+  });
+}
+
+// Check Strava authentication status
+function checkStravaAuthStatus() {
   const hasAccess = !!LS.access();
   const now = Math.floor(Date.now() / 1000);
   const tokenValid = hasAccess && (!LS.expires() || now < LS.expires());
   const connected = LS.connected() && tokenValid;
 
   updateStravaAuthUI(connected);
-  if (connected) loadStravaActivities();
+  
+  if (connected) {
+    loadStravaActivities();
+  }
 }
 
-// launch Strava's authorise flow
+// Launch Strava OAuth flow
 function initiateStravaAuth() {
   const params = new URLSearchParams({
     client_id: STRAVA_CONFIG.CLIENT_ID,
@@ -73,15 +154,17 @@ function initiateStravaAuth() {
   window.location.href = `https://www.strava.com/oauth/authorize?${params.toString()}`;
 }
 
-// handle callback for Strava
+// Handle OAuth callback
 function handleStravaCallback() {
   const code = new URLSearchParams(window.location.search).get('code');
   if (!code) return;
+  
   exchangeStravaCode(code);
+  // Clean URL
   window.history.replaceState({}, document.title, window.location.pathname);
 }
 
-//exchange code for tokens 
+// Exchange code for tokens 
 async function exchangeStravaCode(code) {
   notify('Connecting to Strava...');
   try {
@@ -96,7 +179,7 @@ async function exchangeStravaCode(code) {
   }
 }
 
-// token refresh helpers
+// Token refresh
 async function refreshStravaToken() {
   const refresh = LS.refresh();
   if (!refresh) throw new Error('No refresh token');
@@ -109,14 +192,14 @@ async function getValidStravaToken() {
   const access = LS.access();
   if (!access) throw new Error('No access token');
   const now = Math.floor(Date.now() / 1000);
-  // refresh if expiring within 5 minutes
+  // Refresh if expiring within 5 minutes
   if (LS.expires() && now > (LS.expires() - 300)) {
     return await refreshStravaToken();
   }
   return access;
 }
 
-// Load & render activities 
+// Load and display Strava activities
 async function loadStravaActivities() {
   const loadingEl = document.getElementById('strava-loading');
   loadingEl?.classList.remove('is-hidden');
@@ -124,7 +207,7 @@ async function loadStravaActivities() {
   try {
     const token = await getValidStravaToken();
 
-    // Fetch page 1 (50 per page)
+    // Get activities from Strava API
     const url = `${STRAVA_API_BASE}?action=get_activities&access_token=${encodeURIComponent(token)}&per_page=50&page=1`;
     const res = await fetch(url);
     const data = await res.json();
@@ -138,22 +221,27 @@ async function loadStravaActivities() {
       throw new Error(data.error || `HTTP ${res.status}`);
     }
 
-    // Keep common outdoorsy types
+    // Filter for outdoor activities
     stravaActivities = (data || []).filter(a =>
       ['Ride','Run','Hike','Walk','Cycling','Running','Hiking'].includes(a.type)
     );
 
+    // Refresh import status
+    await loadStravaImportedIds();
+    
+    // Display activities
     displayStravaActivities();
     notify(`Loaded ${stravaActivities.length} activities.`);
+    
   } catch (e) {
-    notify('Failed to load: ' + e.message, 'is-danger');
+    notify('Failed to load activities: ' + e.message, 'is-danger');
     console.error('Strava load error:', e);
   } finally {
     loadingEl?.classList.add('is-hidden');
   }
 }
 
-// show/hide auth vs list
+// Show/hide auth interface
 function updateStravaAuthUI(connected) {
   const auth = document.getElementById('strava-auth-section');
   const list = document.getElementById('strava-activities-section');
@@ -161,10 +249,11 @@ function updateStravaAuthUI(connected) {
   list?.classList.toggle('is-hidden', !connected);
 }
 
-// Render table
+// Display activities in table
 function displayStravaActivities() {
   const tbody = document.getElementById('strava-activities-list');
   if (!tbody) return;
+  
   tbody.innerHTML = '';
 
   if (!stravaActivities.length) {
@@ -172,140 +261,210 @@ function displayStravaActivities() {
     return;
   }
 
-  stravaActivities.forEach(a => {
-    const idStr = a.id.toString();
-    const isImported = stravaImportedIds.includes(idStr);
+  stravaActivities.forEach(activity => {
+    const stravaId = String(activity.id);
+    const isImported = stravaImportedIds.includes(stravaId);
 
-    // convert Strava units to display
-    const km = a.distance ? (a.distance / 1000).toFixed(1) : '0.0';
-    const time = a.moving_time ? formatTime(a.moving_time) : '00:00:00';
-    const elev = a.total_elevation_gain ? Math.round(a.total_elevation_gain) : 0;
+    // Convert units
+    const km = activity.distance ? (activity.distance / 1000).toFixed(1) : '0.0';
+    const duration = activity.moving_time ? formatDuration(activity.moving_time) : '00:00:00';
+    const elevation = activity.total_elevation_gain ? Math.round(activity.total_elevation_gain) : 0;
+    const date = formatStravaDate(activity.start_date_local);
 
-    const tr = document.createElement('tr');
-    tr.className = isImported ? 'imported-row' : 'strava-row';
-    tr.innerHTML = `
-      <td>${safeFormatDate(a.start_date_local)}</td>
-      <td>${a.type || 'Activity'}</td>
-      <td>${escapeHtml(a.name || 'Untitled')}</td>
-      <td>${km}</td>
-      <td>${time}</td>
-      <td>${elev}</td>
+    const row = document.createElement('tr');
+    row.className = isImported ? 'imported-row' : 'strava-row';
+    
+    row.innerHTML = `
+      <td>${date}</td>
+      <td>${activity.type || 'Activity'}</td>
+      <td>${escapeHtml(activity.name || 'Untitled')}</td>
+      <td>${km} km</td>
+      <td>${duration}</td>
+      <td>${elevation} m</td>
       <td>
         <button class="button is-small ${isImported ? 'is-success' : 'is-primary'}"
                 ${isImported ? 'disabled' : ''}
-                data-id="${idStr}">
-          ${isImported ? 'Imported' : 'Import'}
+                data-strava-id="${stravaId}">
+          ${isImported ? '✓ Imported' : 'Import'}
         </button>
       </td>
     `;
-    // add click to the button
-    tr.querySelector('button')?.addEventListener('click', () => importStravaActivity(idStr));
-    tbody.appendChild(tr);
+
+    // Add import handler
+    const button = row.querySelector('button');
+    if (button && !isImported) {
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        importStravaActivity(stravaId);
+      });
+    }
+
+    tbody.appendChild(row);
   });
 }
 
-// Import one activity into your Activities API
+// Import a single Strava activity
 async function importStravaActivity(stravaId) {
-  const a = stravaActivities.find(x => x.id.toString() === stravaId);
-  if (!a) return notify('Activity not found', 'is-danger');
+  console.log('Starting import for Strava ID:', stravaId);
+  
+  const activity = stravaActivities.find(a => String(a.id) === String(stravaId));
+  if (!activity) {
+    notify('Activity not found', 'is-danger');
+    return;
+  }
 
-  // Simple type mapping
-  const mapType = (t) => ({
-    Ride: 'Cycling', Cycling: 'Cycling',
-    Run: 'Running', Running: 'Running',
-    Hike: 'Hiking', Hiking: 'Hiking',
-    Walk: 'Hiking'
-  }[t] || 'Hiking');
+  // Double-check if already imported
+  const alreadyImported = await isStravaActivityImported(stravaId);
+  if (alreadyImported) {
+    notify('Activity already imported', 'is-warning');
+    await loadStravaImportedIds(); // Refresh UI
+    displayStravaActivities();
+    return;
+  }
 
-  // Build card to match activities.php POST
-  const activity = {
-    name: a.name || 'Imported from Strava',
-    date: (a.start_date_local || '').split('T')[0] || new Date().toISOString().split('T')[0],
-    type: mapType(a.type),
-    duration: +(a.moving_time ? (a.moving_time / 3600).toFixed(1) : 0),
-    distance: +(a.distance ? (a.distance / 1000).toFixed(1) : 0),
-    elevation: a.total_elevation_gain ? Math.round(a.total_elevation_gain) : 0,
-    nights: 0,
-    role: 'Participate',
-    category: 'Recreational',
-    weather: 'Unknown',
-    start_location: a.start_latlng ? `${a.start_latlng[0].toFixed(4)}, ${a.start_latlng[1].toFixed(4)}` : 'Strava Import',
-    end_location: a.end_latlng ? `${a.end_latlng[0].toFixed(4)}, ${a.end_latlng[1].toFixed(4)}` : 'Strava Import',
-    comments: `Imported from Strava. Original ID: ${stravaId}${a.description ? '\n\nOriginal description: ' + a.description : ''}`,
-    is_scouting_activity: false,
-    source: 'strava',
-    source_id: stravaId,
-    strava_id: stravaId
-  };
+  // Show loading on button
+  const button = document.querySelector(`button[data-strava-id="${stravaId}"]`);
+  if (button) {
+    button.disabled = true;
+    button.innerHTML = '<span class="icon is-small"><i class="fas fa-spinner fa-pulse"></i></span>';
+  }
 
   try {
-    // POST directly to activities backend
-    const res = await fetch('./api/activities.php', {
+    // Map activity type
+    const typeMapping = {
+      'Ride': 'Cycling',
+      'Cycling': 'Cycling', 
+      'Run': 'Running',
+      'Running': 'Running',
+      'Hike': 'Hiking',
+      'Hiking': 'Hiking',
+      'Walk': 'Hiking'
+    };
+
+    // Build activity object
+    const newActivity = {
+      name: activity.name || 'Strava Import',
+      date: (activity.start_date_local || '').split('T')[0] || new Date().toISOString().split('T')[0],
+      type: typeMapping[activity.type] || 'Hiking',
+      duration: activity.moving_time ? parseFloat((activity.moving_time / 3600).toFixed(2)) : 0,
+      distance: activity.distance ? parseFloat((activity.distance / 1000).toFixed(2)) : 0,
+      elevation: activity.total_elevation_gain ? Math.round(activity.total_elevation_gain) : 0,
+      nights: 0,
+      role: 'Participate',
+      category: 'Recreational',
+      weather: 'Unknown',
+      start_location: activity.start_latlng ? 
+        `${activity.start_latlng[0].toFixed(4)}, ${activity.start_latlng[1].toFixed(4)}` : 
+        'Strava Import',
+      end_location: activity.end_latlng ? 
+        `${activity.end_latlng[0].toFixed(4)}, ${activity.end_latlng[1].toFixed(4)}` : 
+        'Strava Import',
+      comments: `Imported from Strava (ID: ${stravaId})${activity.description ? `\n\n${activity.description}` : ''}`,
+      is_scouting_activity: false,
+      source: 'strava',
+      source_id: stravaId
+    };
+
+    console.log('Importing activity:', newActivity);
+
+    // Create activity
+    const response = await fetch('./api/activities.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(activity)
+      body: JSON.stringify(newActivity)
     });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json.id) throw new Error('Create failed');
 
-    // Mark imported locally
-    stravaImportedIds.push(stravaId);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
 
-    // Refresh table UI
+    const result = await response.json();
+    
+    if (!result.id) {
+      throw new Error('No activity ID returned');
+    }
+
+    console.log('Activity created with ID:', result.id);
+
+    // Record the import
+    const recorded = await recordStravaImport(stravaId, result.id);
+    
+    if (!recorded) {
+      console.warn('Import recorded in activities but not in strava_imports table');
+    }
+
+    // Update UI
     displayStravaActivities();
-
-    // Refresh your main list if available
+    
+    // Refresh main activities list
     if (typeof window.loadActivities === 'function') {
       await window.loadActivities();
     }
 
-    notify(`Imported "${activity.name}"`);
-  } catch (e) {
-    notify('Failed to import: ' + e.message, 'is-danger');
-    console.error('Strava import error:', e);
+    notify(`Successfully imported "${newActivity.name}"`);
+
+  } catch (error) {
+    console.error('Import error:', error);
+    notify(`Failed to import activity: ${error.message}`, 'is-danger');
+  } finally {
+    // Reset button
+    if (button) {
+      button.disabled = false;
+      button.innerHTML = 'Import';
+    }
   }
 }
 
-// disconnect
-
+// Disconnect from Strava
 function disconnectStrava() {
-  if (!confirm('Disconnect from Strava?')) return;
+  if (!confirm('Disconnect from Strava? This will clear your authentication.')) return;
+  
   LS.clear();
   stravaActivities = [];
+  stravaImportedIds = [];
   updateStravaAuthUI(false);
+  
   const tbody = document.getElementById('strava-activities-list');
   if (tbody) tbody.innerHTML = '';
+  
   notify('Disconnected from Strava');
 }
 
-// Helpers
-function formatTime(s) {
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return [h, m, sec].map(n => String(Math.floor(n)).padStart(2, '0')).join(':');
+// Utility functions
+function formatDuration(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  return [hours, minutes, secs]
+    .map(n => String(Math.floor(n)).padStart(2, '0'))
+    .join(':');
 }
 
-function safeFormatDate(isoLike) {
-  // Use  formatter
-  if (typeof window.formatDate === 'function') return window.formatDate(isoLike);
-  // Basic fallback: YYYY-MM-DD
-  if (!isoLike) return '';
-  try { return (isoLike.split('T')[0]) || ''; } catch { return ''; }
+function formatStravaDate(dateString) {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-AU', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  } catch {
+    return dateString.split('T')[0] || '';
+  }
 }
 
-// Avoid input being seen as HTML
 function escapeHtml(text) {
+  if (!text) return '';
   const div = document.createElement('div');
-  div.textContent = text ?? '';
+  div.textContent = text;
   return div.innerHTML;
 }
 
-function notify(msg, type) {
+function notify(message, type = 'is-success') {
   if (typeof window.showNotification === 'function') {
-    window.showNotification(msg, type);
+    window.showNotification(message, type);
   } else {
-    console.log(`[Strava] ${type || 'info'}: ${msg}`);
-    alert(msg);
+    console.log(`[Strava] ${message}`);
   }
 }
