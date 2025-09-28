@@ -17,7 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initialiseTabs();
   initialiseCharts();
   loadActivities();
-  // REMOVED: loadStravaImportedIds(); - this will be handled by strava.js
 
   // form + search events
   document.getElementById('activity-form').addEventListener('submit', saveActivity);
@@ -36,7 +35,6 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
   if (data && method !== 'GET') options.body = JSON.stringify(data);
 
   const res = await fetch(url, options);
-  //  return JSON
   return res.json();
 }
 
@@ -58,7 +56,6 @@ function switchTab(tabName) {
 
   // tab-specific actions
   if (tabName === 'dashboard') setTimeout(updateCharts, 50);
-  // REMOVED: checkStravaAuthStatus call - strava.js will handle its own state
 }
 
 async function loadActivities() {
@@ -80,7 +77,6 @@ async function saveActivity(e) {
   for (const id of requiredIds) {
     const el = document.getElementById(id);
     if (el && !String(el.value).trim()) {
-      // REMOVED notification - just return silently or handle differently
       return;
     }
   }
@@ -110,10 +106,8 @@ async function saveActivity(e) {
   // create or update via API
   if (currentActivityId) {
     await apiRequest(`${API_CONFIG.activities}?id=${currentActivityId}`, 'PUT', activity);
-    // REMOVED notification
   } else {
     await apiRequest(API_CONFIG.activities, 'POST', activity);
-    // REMOVED notification
   }
 
   // refresh UI
@@ -222,8 +216,15 @@ async function showActivityDetails(id) {
 }
 
 function closeModal() {
-  document.getElementById('activity-modal').classList.remove('is-active');
-  document.getElementById('import-modal').classList.remove('is-active');
+  const activityModal = document.getElementById('activity-modal');
+  const importModal = document.getElementById('import-modal');
+  
+  if (activityModal) {
+    activityModal.classList.remove('is-active');
+  }
+  if (importModal) {
+    importModal.classList.remove('is-active');
+  }
 }
 
 function editActivityFromModal(a) {
@@ -254,7 +255,6 @@ async function deleteActivityFromModal() {
   await apiRequest(`${API_CONFIG.activities}?id=${currentActivityId}`, 'DELETE');
   await loadActivities();
   closeModal();
-  // REMOVED notification
 }
 
 //dashboard titles 
@@ -280,14 +280,6 @@ function formatDate(dateString) {
     month: 'short',
     day: 'numeric'
   });
-}
-
-function showNotification(msg, type = 'is-success') {
-  const n = document.getElementById('notification');
-  n.textContent = msg;
-  n.className = `notification ${type}`;
-  n.classList.remove('is-hidden');
-  setTimeout(() => n.classList.add('is-hidden'), 3000);
 }
 
 // Show import modal with prefilled data
@@ -359,9 +351,6 @@ async function submitImportForm(e) {
         await recordStravaImport(sourceData.source_id, result.id);
       }
       
-      // ONLY show notification for successful database import
-      showNotification(`Successfully imported "${activity.name}" to database`);
-      
       await loadActivities();
       closeModal();
       
@@ -382,6 +371,5 @@ async function submitImportForm(e) {
 
 // Make key functions available globally for other modules
 window.loadActivities = loadActivities;
-window.showNotification = showNotification;
 window.showImportModal = showImportModal;
 window.formatDate = formatDate;

@@ -10,12 +10,6 @@ function initialiseGPX() {
   if (gpxInput) {
     gpxInput.addEventListener('change', handleGPXFileSelect);
   }
-
-  // Import button
-  const importBtn = document.getElementById('import-gpx-btn');
-  if (importBtn) {
-    importBtn.addEventListener('click', importGPX);
-  }
 }
 
 // Load GPX imported IDs from database
@@ -95,7 +89,7 @@ function handleGPXFileSelect(event) {
   if (!file) return;
   
   if (!file.name.toLowerCase().endsWith('.gpx')) {
-    notify('Please select a .gpx file.', 'is-warning');
+    console.warn('Please select a .gpx file.');
     return;
   }
   
@@ -108,11 +102,9 @@ async function handleGPXFile(file) {
     // Check if already imported
     const alreadyImported = await isGPXImported(file.name);
     if (alreadyImported) {
-      notify('This GPX file has already been imported.', 'is-warning');
+      console.warn('This GPX file has already been imported.');
       return;
     }
-
-    notify('Processing GPX file...');
 
     // Read file content
     const xmlString = await readFileAsText(file);
@@ -121,7 +113,7 @@ async function handleGPXFile(file) {
     const { trackName, trackPoints } = parseGPX(xmlString, file.name);
 
     if (!trackPoints.length) {
-      notify('No valid track points found in GPX file.', 'is-danger');
+      console.error('No valid track points found in GPX file.');
       return;
     }
 
@@ -136,14 +128,41 @@ async function handleGPXFile(file) {
       pointCount: trackPoints.length
     };
 
-    // Show preview
-    displayGPXPreview();
-    notify(`GPX file processed successfully: ${trackPoints.length} points found.`);
+    // Show import modal instead of preview
+    showGPXImportModal();
     
   } catch (error) {
     console.error('GPX processing error:', error);
-    notify(`Failed to process GPX file: ${error.message}`, 'is-danger');
   }
+}
+
+// Show GPX import modal
+function showGPXImportModal() {
+  if (!currentGPXData) return;
+  
+  const { analysis, trackName, filename } = currentGPXData;
+  
+  const importData = {
+    name: trackName || 'GPX Import',
+    date: new Date().toISOString().split('T')[0],
+    type: 'Hiking',
+    duration: parseFloat(analysis.duration.toFixed(2)) || 0,
+    distance: parseFloat(analysis.distance.toFixed(2)) || 0,
+    elevation: Math.round(analysis.elevationGain) || 0,
+    comments: `Imported from GPX file: ${filename}\nTrack points: ${analysis.totalPoints}`,
+    source: 'gpx',
+    source_id: filename
+  };
+  
+  // Use the global showImportModal function
+  if (typeof window.showImportModal === 'function') {
+    window.showImportModal(importData);
+  }
+  
+  // Clear the current data and reset file input
+  currentGPXData = null;
+  const fileInput = document.getElementById('gpx-file');
+  if (fileInput) fileInput.value = '';
 }
 
 // Read file as text
@@ -286,141 +305,6 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// Display GPX preview
-function displayGPXPreview() {
-  const previewEl = document.getElementById('gpx-preview');
-  const detailsEl = document.getElementById('gpx-details');
-  
-  if (!previewEl || !detailsEl || !currentGPXData) return;
-
-  const { analysis, filename, pointCount } = currentGPXData;
-
-  previewEl.classList.remove('is-hidden');
-  detailsEl.innerHTML = `
-    <div class="box">
-      <h6 class="title is-6">${escapeHtml(filename)}</h6>
-      <div class="columns is-multiline">
-        <div class="column is-6">
-          <strong>Distance:</strong> ${analysis.distance.toFixed(2)} km
-        </div>
-        <div class="column is-6">
-          <strong>Elevation Gain:</strong> ${Math.round(analysis.elevationGain)} m
-        </div>
-        <div class="column is-6">
-          <strong>Duration:</strong> ${analysis.duration.toFixed(1)} h
-        </div>
-        <div class="column is-6">
-          <strong>Track Points:</strong> ${pointCount}
-        </div>
-        <div class="column is-6">
-          <strong>Min Elevation:</strong> ${Math.round(analysis.minElevation)} m
-        </div>
-        <div class="column is-6">
-          <strong>Max Elevation:</strong> ${Math.round(analysis.maxElevation)} m
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-// Import GPX as activity
-async function importGPX() {
-  if (!currentGPXData) {
-    notify('No GPX data to import.', 'is-warning');
-    return;
-  }
-
-  // Double-check import status
-  const alreadyImported = await isGPXImported(currentGPXData.filename);
-  if (alreadyImported) {
-    notify('This GPX file has already been imported.', 'is-warning');
-    return;
-  }
-
-  const importBtn = document.getElementById('import-gpx-btn');
-  if (importBtn) {
-    importBtn.disabled = true;
-    importBtn.innerHTML = '<span class="icon is-small"><i class="fas fa-spinner fa-pulse"></i></span> Importing...';
-  }
-
-  try {
-    const { analysis, trackName, filename } = currentGPXData;
-
-    // Build activity object
-    const activity = {
-      name: trackName || 'GPX Import',
-      date: new Date().toISOString().split('T')[0], // Today's date
-      type: 'Hiking', // Default type
-      duration: parseFloat(analysis.duration.toFixed(2)) || 0,
-      distance: parseFloat(analysis.distance.toFixed(2)) || 0,
-      elevation: Math.round(analysis.elevationGain) || 0,
-      nights: 0,
-      role: 'Participate',
-      category: 'Recreational',
-      weather: 'Unknown',
-      start_location: 'GPX Import',
-      end_location: 'GPX Import',
-      comments: `Imported from GPX file: ${filename}\nTrack points: ${analysis.totalPoints}`,
-      is_scouting_activity: false,
-      source: 'gpx',
-      source_id: filename
-    };
-
-    console.log('Importing GPX activity:', activity);
-
-    // Create activity
-    const response = await fetch('./api/activities.php', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(activity)
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const result = await response.json();
-    
-    if (!result.id) {
-      throw new Error('No activity ID returned');
-    }
-
-    console.log('GPX activity created with ID:', result.id);
-
-    // Record the import
-    const recorded = await recordGPXImport(filename, result.id);
-    
-    if (!recorded) {
-      console.warn('Activity created but not recorded in gpx_imports table');
-    }
-
-    // Clear the preview
-    currentGPXData = null;
-    document.getElementById('gpx-preview')?.classList.add('is-hidden');
-    
-    // Reset file input
-    const fileInput = document.getElementById('gpx-file');
-    if (fileInput) fileInput.value = '';
-
-    // Refresh main activities list
-    if (typeof window.loadActivities === 'function') {
-      await window.loadActivities();
-    }
-
-    notify(`Successfully imported "${activity.name}" from GPX file`);
-
-  } catch (error) {
-    console.error('GPX import error:', error);
-    notify(`Failed to import GPX: ${error.message}`, 'is-danger');
-  } finally {
-    // Reset button
-    if (importBtn) {
-      importBtn.disabled = false;
-      importBtn.innerHTML = 'Import GPX';
-    }
-  }
-}
-
 // Utility functions
 function escapeHtml(text) {
   if (!text) return '';
@@ -429,10 +313,6 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-function notify(message, type = 'is-success') {
-  if (typeof window.showNotification === 'function') {
-    window.showNotification(message, type);
-  } else {
-    console.log(`[GPX] ${message}`);
-  }
-}
+// Make global
+window.recordGPXImport = recordGPXImport;
+window.loadGPXImportedIds = loadGPXImportedIds;
