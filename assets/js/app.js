@@ -6,7 +6,10 @@ let currentActivityId = null;
 const API_CONFIG = {
   activities: './api/activities.php',
   stats: './api/stats.php',
-  stravaImports: './api/strava_imports.php'
+  stravaImports: './api/strava_imports.php',
+  awards: './api/awards.php',
+  reportSend: './api/report_send.php',
+  awardedProcessor: './api/awarded.php'
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -23,9 +26,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('search').addEventListener('input', handleSearch);
   document.getElementById('reset-btn').addEventListener('click', resetForm);
 
+  // Send Report button event
+  document.getElementById('send-report-btn').addEventListener('click', sendActivityReport);
+
   // GPX + Strava setup
   initialiseGPX();
   initialiseStrava();
+
+  // Process awards on page load
+  processAwards();
 });
 
 //  handles GET/POST/PUT/DELETE requests and return JSON
@@ -64,6 +73,7 @@ async function loadActivities() {
   updateDashboard();
   displayActivities();
   updateCharts();
+  loadAwards(); // Load awards after activities
 }
 
 async function saveActivity(e) {
@@ -113,10 +123,88 @@ async function saveActivity(e) {
   // refresh UI
   resetForm();
   await loadActivities();
+  
+  // Process awards after saving activity
+  await processAwards();
+  
   switchTab('activities');
 
   // remove loading state
   saveBtn.classList.remove('is-loading');
+}
+
+// Process awards by calling the awarded.php endpoint
+async function processAwards() {
+  try {
+    const response = await fetch(API_CONFIG.awardedProcessor, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (response.ok) {
+      const text = await response.text();
+      console.log('Awards processing result:', text);
+      
+      // Refresh awards display after processing
+      await loadAwards();
+    }
+  } catch (error) {
+    console.error('Error processing awards:', error);
+  }
+}
+
+// Send activity report via email
+async function sendActivityReport() {
+  const sendBtn = document.getElementById('send-report-btn');
+  const originalContent = sendBtn.innerHTML;
+  
+  // Show loading state
+  sendBtn.disabled = true;
+  sendBtn.innerHTML = `
+    <span class="icon">
+      <i class="fas fa-spinner fa-pulse"></i>
+    </span>
+    <span>Sending...</span>
+  `;
+
+  try {
+    const response = await fetch(API_CONFIG.reportSend, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (response.ok) {
+      const result = await response.text();
+      console.log('Report send result:', result);
+      
+      // Show success message
+      showNotification('Activity report sent successfully!', 'is-success');
+      
+      // Temporarily change button to show success
+      sendBtn.innerHTML = `
+        <span class="icon">
+          <i class="fas fa-check"></i>
+        </span>
+        <span>Sent!</span>
+      `;
+      
+      // Reset button after 3 seconds
+      setTimeout(() => {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = originalContent;
+      }, 3000);
+      
+    } else {
+      throw new Error(`HTTP ${response.status}`);
+    }
+  } catch (error) {
+    console.error('Error sending report:', error);
+    showNotification('Failed to send report. Please try again.', 'is-danger');
+    
+    // Reset button
+    sendBtn.disabled = false;
+    sendBtn.innerHTML = originalContent;
+  }
 }
 
 function resetForm() {
@@ -180,7 +268,6 @@ function displayFilteredActivities(list) {
 }
 
 //activity modals
-
 async function showActivityDetails(id) {
   // fetch single activity then open modal
   const a = await apiRequest(`${API_CONFIG.activities}?id=${id}`);
@@ -254,11 +341,14 @@ async function deleteActivityFromModal() {
 
   await apiRequest(`${API_CONFIG.activities}?id=${currentActivityId}`, 'DELETE');
   await loadActivities();
+  
+  // Process awards after deleting activity
+  await processAwards();
+  
   closeModal();
 }
 
 //dashboard titles 
-
 function updateDashboard() {
   const totalActivities = activities.length;
   const totalDistance = activities.reduce((s, a) => s + (parseFloat(a.distance) || 0), 0);
@@ -272,7 +362,6 @@ function updateDashboard() {
 }
 
 //utilities
-
 function formatDate(dateString) {
   if (!dateString) return '-';
   return new Date(dateString).toLocaleDateString('en-AU', {
@@ -352,6 +441,10 @@ async function submitImportForm(e) {
       }
       
       await loadActivities();
+      
+      // Process awards after importing
+      await processAwards();
+      
       closeModal();
       
       // Refresh the respective import lists
@@ -369,7 +462,129 @@ async function submitImportForm(e) {
   }
 }
 
+// Awards functionality
+async function loadAwards() {
+  try {
+    const response = await fetch(API_CONFIG.awards);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    displayHighestAwards(data.highest_awards);
+    displayProgressToNextAwards(data.next_awards, data.totals);
+    
+  } catch (error) {
+    console.error('Error loading awards:', error);
+    displayAwardsError();
+  }
+}
+
+// Display highest awards achieved
+function displayHighestAwards(awards) {
+  const container = document.getElementById('awards-container');
+  
+  if (!awards || awards.length === 0) {
+    container.innerHTML = `
+      <div class="has-text-centered has-text-grey">
+        <p>No awards earned yet</p>
+        <p class="is-size-7">Complete more activities to start earning awards!</p>
+      </div>
+    `;
+    return;
+  }
+  
+  const awardsHtml = awards.map(award => {
+    const dateEarned = formatDate(award.date_earned);
+    
+    return `
+      <div class="box mb-4">
+        <h6 class="title is-6 mb-2">${award.name}</h6>
+        <div class="tags">
+          <span class="tag is-success is-small">
+            Earned ${dateEarned}
+          </span>
+          <span class="tag is-light is-small">
+            ${award.type === 'camping' ? `${award.value} nights` : `${award.value} km`}
+          </span>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  container.innerHTML = awardsHtml;
+}
+
+// Display progress to next awards
+function displayProgressToNextAwards(nextAwards, totals) {
+  const container = document.getElementById('progress-container');
+  
+  if (!nextAwards || nextAwards.length === 0) {
+    container.innerHTML = `
+      <div class="has-text-centered has-text-success">
+        <p><strong>Congratulations!</strong></p>
+        <p>You've earned all available awards!</p>
+      </div>
+    `;
+    return;
+  }
+  
+  const progressHtml = nextAwards.map(award => {
+    const isDistance = award.type === 'walkabout';
+    const currentValue = isDistance ? totals.distance : totals.nights;
+    const targetValue = award.value;
+    const progress = Math.min((currentValue / targetValue) * 100, 100);
+    const remaining = Math.max(targetValue - currentValue, 0);
+    const unit = isDistance ? 'km' : 'nights';
+    
+    return `
+      <div class="box mb-4">
+        <h6 class="title is-6 mb-2">${award.name}</h6>
+        
+        <progress class="progress is-info is-small mb-3" value="${progress}" max="100">${progress}%</progress>
+        
+        <div class="tags">
+          <span class="tag is-info is-small">
+            ${currentValue.toFixed(1)} / ${targetValue} ${unit}
+          </span>
+          <span class="tag is-light is-small">
+            ${remaining.toFixed(1)} ${unit} remaining
+          </span>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  container.innerHTML = progressHtml;
+}
+
+// Display error message for awards
+function displayAwardsError() {
+  const awardsContainer = document.getElementById('awards-container');
+  const progressContainer = document.getElementById('progress-container');
+  
+  const errorHtml = `
+    <div class="has-text-centered has-text-grey">
+      <span class="icon is-large">
+        <i class="fas fa-exclamation-triangle"></i>
+      </span>
+      <p>Unable to load awards</p>
+      <p class="is-size-7">Please check your connection and try again</p>
+    </div>
+  `;
+  
+  if (awardsContainer) awardsContainer.innerHTML = errorHtml;
+  if (progressContainer) progressContainer.innerHTML = errorHtml;
+}
+
+// Notification helper - removed functionality
+function showNotification(message, type = 'is-success') {
+  // Notifications removed - just log to console
+  console.log(`${type}: ${message}`);
+}
+
 // Make key functions available globally for other modules
 window.loadActivities = loadActivities;
 window.showImportModal = showImportModal;
 window.formatDate = formatDate;
+window.showNotification = showNotification;

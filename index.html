@@ -76,6 +76,51 @@
         </div>
       </div>
 
+      <!-- Awards Section - Two Columns Side by Side -->
+      <div class="columns">
+        <!-- Highest Awards Achieved -->
+        <div class="column is-6">
+          <div class="card custom-card">
+            <header class="card-header">
+              <p class="card-header-title">
+                <span>Highest Awards Achieved</span>
+              </p>
+            </header>
+            <div class="card-content" style="min-height: 300px;">
+              <div id="awards-container">
+                <div class="has-text-centered has-text-grey">
+                  <span class="icon is-large">
+                    <i class="fas fa-spinner fa-pulse"></i>
+                  </span>
+                  <p>Loading awards...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress to Next Awards -->
+        <div class="column is-6">
+          <div class="card custom-card">
+            <header class="card-header">
+              <p class="card-header-title">
+                <span>Progress to Next Awards</span>
+              </p>
+            </header>
+            <div class="card-content" style="min-height: 300px;">
+              <div id="progress-container">
+                <div class="has-text-centered has-text-grey">
+                  <span class="icon is-large">
+                    <i class="fas fa-spinner fa-pulse"></i>
+                  </span>
+                  <p>Loading progress...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Date Range Selector -->
       <div class="card custom-card mb-4">
         <div class="card-content">
@@ -303,6 +348,29 @@
       </div>
     </div>
 
+    
+      <!-- Send Report Button -->
+      <div class="card custom-card mb-4">
+        <div class="card-content">
+          <div class="level">
+            <div class="level-left">
+              <div class="level-item">
+                <h5 class="title is-5">Activity Report</h5>
+              </div>
+            </div>
+            <div class="level-right">
+              <div class="level-item">
+                <button class="button is-success" id="send-report-btn">
+                  <span class="icon">
+                    <i class="fas fa-paper-plane"></i>
+                  </span>
+                  <span>Send Report</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     <!-- Activities -->
     <div id="activities-content" class="tab-content is-hidden">
       <div class="card custom-card">
@@ -323,6 +391,7 @@
       </div>
     </div>
 
+    
     <!-- Import GPX -->
     <div id="import-content" class="tab-content is-hidden">
       <div class="card custom-card">
@@ -432,7 +501,174 @@
       </div>
     </div>
 
-    <div id="notification" class="notification is-success is-hidden"></div>
+    <!-- Import Modal -->
+    <div class="modal" id="import-modal">
+      <div class="modal-background" onclick="closeModal()"></div>
+      <div class="modal-card">
+        <header class="modal-card-head">
+          <p class="modal-card-title">Import Activity</p>
+          <button class="delete" aria-label="close" onclick="closeModal()"></button>
+        </header>
+        <section class="modal-card-body">
+          <form id="import-activity-form" onsubmit="submitImportForm(event)">
+            <div class="columns is-multiline">
+              <div class="column is-6">
+                <div class="field">
+                  <label class="label">Activity Name</label>
+                  <div class="control">
+                    <input class="input" type="text" id="import-name" required>
+                  </div>
+                </div>
+              </div>
+              <div class="column is-6">
+                <div class="field">
+                  <label class="label">Date</label>
+                  <div class="control">
+                    <input class="input" type="date" id="import-date" required>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="columns is-multiline">
+              <div class="column is-4">
+                <div class="field">
+                  <label class="label">Type</label>
+                  <div class="control">
+                    <div class="select is-fullwidth">
+                      <select id="import-type" required>
+                        <option value="Hiking">Hiking</option>
+                        <option value="Camping">Camping</option>
+                        <option value="Cycling">Cycling</option>
+                        <option value="Running">Running</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="column is-4">
+                <div class="field">
+                  <label class="label">Duration (hours)</label>
+                  <div class="control">
+                    <input class="input" type="number" step="0.1" min="0" id="import-duration" readonly>
+                  </div>
+                </div>
+              </div>
+              <div class="column is-4">
+                <div class="field">
+                  <label class="label">Distance (km)</label>
+                  <div class="control">
+                    <input class="input" type="number" step="0.1" min="0" id="import-distance" readonly>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="columns is-multiline">
+              <div class="column is-4">
+                <div class="field">
+                  <label class="label">Elevation (m)</label>
+                  <div class="control">
+                    <input class="input" type="number" min="0" id="import-elevation" readonly>
+                  </div>
+                </div>
+              </div>
+              <div class="column is-4">
+                <div class="field">
+                  <label class="label">Nights Camped</label>
+                  <div class="control">
+                    <input class="input" type="number" min="0" value="0" id="import-nights">
+                  </div>
+                </div>
+              </div>
+              <div class="column is-4">
+                <div class="field">
+                  <label class="label">Weather</label>
+                  <div class="control">
+                    <input class="input" type="text" id="import-weather" placeholder="Sunny, Rain, etc." required>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="columns is-multiline">
+              <div class="column is-4">
+                <div class="field">
+                  <label class="label">Role</label>
+                  <div class="control">
+                    <div class="select is-fullwidth">
+                      <select id="import-role" required>
+                        <option value="Participate">Participate</option>
+                        <option value="Assist">Assist</option>
+                        <option value="Lead">Lead</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="column is-4">
+                <div class="field">
+                  <label class="label">Category</label>
+                  <div class="control">
+                    <div class="select is-fullwidth">
+                      <select id="import-category" required>
+                        <option value="Recreational">Recreational</option>
+                        <option value="Coaching">Coaching</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="column is-4">
+                <div class="field">
+                  <label class="label">Scouting Activity?</label>
+                  <div class="control">
+                    <label class="checkbox">
+                      <input type="checkbox" id="import-scouting"> Yes
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="columns">
+              <div class="column is-6">
+                <div class="field">
+                  <label class="label">Start Location</label>
+                  <div class="control">
+                    <input class="input" type="text" id="import-start-location" placeholder="Starting point" required>
+                  </div>
+                </div>
+              </div>
+              <div class="column is-6">
+                <div class="field">
+                  <label class="label">End Location</label>
+                  <div class="control">
+                    <input class="input" type="text" id="import-end-location" placeholder="End point" required>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="label">Comments</label>
+              <div class="control">
+                <textarea class="textarea" id="import-comments" placeholder="Notes, incidents, etc."></textarea>
+              </div>
+            </div>
+
+            <div class="field is-grouped">
+              <div class="control">
+                <button class="button is-primary" type="submit">Import Activity</button>
+              </div>
+              <div class="control">
+                <button class="button" type="button" onclick="closeModal()">Cancel</button>
+              </div>
+            </div>
+          </form>
+        </section>
+      </div>
+    </div>
   </div>
 
 <script src="assets/js/charts.js"></script>

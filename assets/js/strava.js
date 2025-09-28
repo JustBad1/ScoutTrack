@@ -200,6 +200,7 @@ async function getValidStravaToken() {
 }
 
 // Load and display Strava activities
+// Load and display Strava activities
 async function loadStravaActivities() {
   const loadingEl = document.getElementById('strava-loading');
   loadingEl?.classList.remove('is-hidden');
@@ -221,10 +222,25 @@ async function loadStravaActivities() {
       throw new Error(data.error || `HTTP ${res.status}`);
     }
 
-    // Filter for outdoor activities
-    stravaActivities = (data || []).filter(a =>
-      ['Ride','Run','Hike','Walk','Cycling','Running','Hiking'].includes(a.type)
-    );
+    console.log('Strava API response:', data); // Debug logging
+
+    // Check if data is an array
+    if (!Array.isArray(data)) {
+      console.error('Expected array from Strava API, got:', typeof data, data);
+      
+      // Check if it's an error response
+      if (data && data.error) {
+        throw new Error(data.error);
+      }
+      
+      // If it's not an array and not an error, treat as empty
+      stravaActivities = [];
+    } else {
+      // Filter for outdoor activities
+      stravaActivities = data.filter(a =>
+        a && a.type && ['Ride','Run','Hike','Walk','Cycling','Running','Hiking'].includes(a.type)
+      );
+    }
 
     // Refresh import status
     await loadStravaImportedIds();
